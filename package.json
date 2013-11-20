@@ -1,0 +1,29 @@
+{
+  "name": "tiny-game",
+  "version": "0.0.0",
+  "description": "This is a tiny game engine just to burn off some steam",
+  "main": "server.js",
+  "scripts": {
+    "test": "none"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:/stevekane/tiny-game.git"
+  },
+  "keywords": [
+    "games",
+    "javascript",
+    "node",
+    "yay"
+  ],
+  "author": "Steve Kane",
+  "license": "BSD",
+  "devDependencies": {
+    "chai": "~1.8.1",
+    "mocha": "~1.14.0",
+    "browserify": "~2.35.4"
+  },
+  "dependencies": {
+    "connect": "~2.11.0"
+  }
+}
