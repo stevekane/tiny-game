@@ -1,86 +1,75 @@
 ;(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 var Game = require('./engine/game/game.js');
-var Bus = require('./engine/bus/bus.js');
+var Cache = require('./engine/cache/cache');
+var GameCache = require('./engine/cache/gameCache');
+var gameCacheManager = require('./engine/cache/gameCacheManager');
 
-var game = new Game({}, {name: "booty"});
-var subscriber = {update: "beep boop"};
-var bus = new Bus("mybus");
-bus.addSub("mySub", subscriber);
-subscriber.bus = bus;
+var cache = new Cache({type: "test", default: "wanker"});
+var gameCache = new GameCache([cache]);
 
-subscriber.bus.on("test", function () {
-  console.log(this);
-});
+console.log(gameCache);
+console.log(gameCacheManager.getCacheByType(gameCache, "test"));
 
-subscriber.bus.emit("test");
-//game.start();
-
-},{"./engine/bus/bus.js":2,"./engine/game/game.js":3}],2:[function(require,module,exports){
-var inherits = require("util").inherits
-  , events = require("events")
-var _ = require('lodash')
-  , throwIf = require('../../libs/exceptions/exceptions').throwIf
-  , isNone = require('../../libs/conditionals/conditionals').isNone;
-
+},{"./engine/cache/cache":2,"./engine/cache/gameCache":3,"./engine/cache/gameCacheManager":4,"./engine/game/game.js":5}],2:[function(require,module,exports){
+var inherits = require('util').inherits;
 /**
-What is a bus?
-It is a network of connected objects 
-that can register themselves by name
-and can receive data from other objects through
-a common connection.  
+What is the point of a cache?
 
-The bus may be instantiated w/ an array of subscribers
-which are just POJOs.  The pojos themselves must be wrapped
-in k/v pairs which identify them
-eg. {game: {}} or {menuscene: {}}
-*names must be unique to the bus
 
-subscribers can connect or disconnect to a bus 
+A cache is an in-memory store of data that is stored by name
+and may be retrieved by name at any time.  
 
-when a subscriber connects, a connection event is emitted
-when a subscriber disconnects, a disconnection event is emitted
-when a subscribers publishes an event, the event is published
-as {emitterName: emitter, eventName: eventName, data}
+Data may be required by an application through asyncronous actions but not used until the data is actually available.
 
-The entire purpose of this is to decouple the objects in our game
-as much as fucking humanly possible.  We will pass around data
-instead of doing complex dependency injections and thus we will win
+We thus may want to load data our application will need prior to 
+using it to perform actions in our app (eg. instantiating objects
+or sending data elsewhere).
+
 */
 
-var Bus = function (name, options) {
+var Cache = function (options) {
   var options = options || {};
-  throwIf("No name provided to constructor", isNone(name));
 
-  _.extend(this, options);
-  this.name = name;
-  this.subscribers = {};
+  this.type = options.type || "";
+  this.default = options.default || null;
+  this._cache = {};
 };
 
-//here we are inheriting from node's EventEmitter
-inherits(Bus, events.EventEmitter);
+inherits(Cache, Object);
 
-Bus.prototype.addSub = function (name, subscriber) {
-  throwIf("No name provided to addSub", isNone(name));
-  throwIf("No subscriber provided to addSub", isNone(subscriber));
-  throwIf(
-    "subscriber by name " + name + " already exists", 
-    alreadySubscribed(this.subscribers, name)
-  );
-  this.subscribers[name] = subscriber;
-  return this;
+module.exports = Cache;
+
+},{"util":11}],3:[function(require,module,exports){
+var _ = require('lodash');
+
+var GameCache = function (caches) {
+  var self = this;
+  this._caches = {};
+
+  _.forEach(caches, function (cache) {
+    self._caches[cache.type] = cache;
+  });
 };
 
-Bus.prototype.removeSub = function (name) {
-  throwIf("No name provided to removeSub", isNone(name));
-  this.subscribers[name] = undefined;
-  return this;
+module.exports = GameCache;
+
+},{"lodash":9}],4:[function(require,module,exports){
+var GameCacheManager = function () {};
+
+var addCache = function (gamecache, cache) {
+  gamecache._caches[cache.type || "default"] = cache;
+}
+
+var getCacheByType = function (gamecache, type) {
+  return gamecache._caches[type]; 
+}
+
+module.exports = {
+  addCache: addCache,
+  getCacheByType: getCacheByType
 };
 
-module.exports = Bus;
-
-var alreadySubscribed = _.has;
-
-},{"../../libs/conditionals/conditionals":4,"../../libs/exceptions/exceptions":5,"events":9,"lodash":7,"util":10}],3:[function(require,module,exports){
+},{}],5:[function(require,module,exports){
 var _ = require('lodash')
   , throwIf = require('../../libs/exceptions/exceptions').throwIf
   , isNone = require('../../libs/conditionals/conditionals').isNone
@@ -115,12 +104,12 @@ Game.prototype.pause = function () {
 
 module.exports = Game;
 
-},{"../../libs/conditionals/conditionals":4,"../../libs/exceptions/exceptions":5,"../../libs/raf-shim/raf-shim":6,"lodash":7}],4:[function(require,module,exports){
+},{"../../libs/conditionals/conditionals":6,"../../libs/exceptions/exceptions":7,"../../libs/raf-shim/raf-shim":8,"lodash":9}],6:[function(require,module,exports){
 exports.isNone = function (value) {
   return (undefined === value || null === value || "" === value);
 }
 
-},{}],5:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 var _ = require('lodash');
 
 exports.throwIf = function (message, condition) {
@@ -135,7 +124,7 @@ exports.throwUnless = function (message, condition) {
   }
 }
 
-},{"lodash":7}],6:[function(require,module,exports){
+},{"lodash":9}],8:[function(require,module,exports){
 var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {};var window = window || {};
 
 module.exports = 
@@ -145,7 +134,7 @@ module.exports =
   window.oRequestAnimationFrame ||
   global.setImmediate;
 
-},{}],7:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
 var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {};/**
  * @license
  * Lo-Dash 2.3.0 (Custom Build) <http://lodash.com/>
@@ -6738,7 +6727,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
   }
 }.call(this));
 
-},{}],8:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 
 
 //
@@ -6956,288 +6945,7 @@ if (typeof Object.getOwnPropertyDescriptor === 'function') {
   exports.getOwnPropertyDescriptor = valueObject;
 }
 
-},{}],9:[function(require,module,exports){
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-var util = require('util');
-
-function EventEmitter() {
-  this._events = this._events || {};
-  this._maxListeners = this._maxListeners || undefined;
-}
-module.exports = EventEmitter;
-
-// Backwards-compat with node 0.10.x
-EventEmitter.EventEmitter = EventEmitter;
-
-EventEmitter.prototype._events = undefined;
-EventEmitter.prototype._maxListeners = undefined;
-
-// By default EventEmitters will print a warning if more than 10 listeners are
-// added to it. This is a useful default which helps finding memory leaks.
-EventEmitter.defaultMaxListeners = 10;
-
-// Obviously not all Emitters should be limited to 10. This function allows
-// that to be increased. Set to zero for unlimited.
-EventEmitter.prototype.setMaxListeners = function(n) {
-  if (!util.isNumber(n) || n < 0)
-    throw TypeError('n must be a positive number');
-  this._maxListeners = n;
-  return this;
-};
-
-EventEmitter.prototype.emit = function(type) {
-  var er, handler, len, args, i, listeners;
-
-  if (!this._events)
-    this._events = {};
-
-  // If there is no 'error' event listener then throw.
-  if (type === 'error') {
-    if (!this._events.error ||
-        (util.isObject(this._events.error) && !this._events.error.length)) {
-      er = arguments[1];
-      if (er instanceof Error) {
-        throw er; // Unhandled 'error' event
-      } else {
-        throw TypeError('Uncaught, unspecified "error" event.');
-      }
-      return false;
-    }
-  }
-
-  handler = this._events[type];
-
-  if (util.isUndefined(handler))
-    return false;
-
-  if (util.isFunction(handler)) {
-    switch (arguments.length) {
-      // fast cases
-      case 1:
-        handler.call(this);
-        break;
-      case 2:
-        handler.call(this, arguments[1]);
-        break;
-      case 3:
-        handler.call(this, arguments[1], arguments[2]);
-        break;
-      // slower
-      default:
-        len = arguments.length;
-        args = new Array(len - 1);
-        for (i = 1; i < len; i++)
-          args[i - 1] = arguments[i];
-        handler.apply(this, args);
-    }
-  } else if (util.isObject(handler)) {
-    len = arguments.length;
-    args = new Array(len - 1);
-    for (i = 1; i < len; i++)
-      args[i - 1] = arguments[i];
-
-    listeners = handler.slice();
-    len = listeners.length;
-    for (i = 0; i < len; i++)
-      listeners[i].apply(this, args);
-  }
-
-  return true;
-};
-
-EventEmitter.prototype.addListener = function(type, listener) {
-  var m;
-
-  if (!util.isFunction(listener))
-    throw TypeError('listener must be a function');
-
-  if (!this._events)
-    this._events = {};
-
-  // To avoid recursion in the case that type === "newListener"! Before
-  // adding it to the listeners, first emit "newListener".
-  if (this._events.newListener)
-    this.emit('newListener', type,
-              util.isFunction(listener.listener) ?
-              listener.listener : listener);
-
-  if (!this._events[type])
-    // Optimize the case of one listener. Don't need the extra array object.
-    this._events[type] = listener;
-  else if (util.isObject(this._events[type]))
-    // If we've already got an array, just append.
-    this._events[type].push(listener);
-  else
-    // Adding the second element, need to change to array.
-    this._events[type] = [this._events[type], listener];
-
-  // Check for listener leak
-  if (util.isObject(this._events[type]) && !this._events[type].warned) {
-    var m;
-    if (!util.isUndefined(this._maxListeners)) {
-      m = this._maxListeners;
-    } else {
-      m = EventEmitter.defaultMaxListeners;
-    }
-
-    if (m && m > 0 && this._events[type].length > m) {
-      this._events[type].warned = true;
-      console.error('(node) warning: possible EventEmitter memory ' +
-                    'leak detected. %d listeners added. ' +
-                    'Use emitter.setMaxListeners() to increase limit.',
-                    this._events[type].length);
-      console.trace();
-    }
-  }
-
-  return this;
-};
-
-EventEmitter.prototype.on = EventEmitter.prototype.addListener;
-
-EventEmitter.prototype.once = function(type, listener) {
-  if (!util.isFunction(listener))
-    throw TypeError('listener must be a function');
-
-  function g() {
-    this.removeListener(type, g);
-    listener.apply(this, arguments);
-  }
-
-  g.listener = listener;
-  this.on(type, g);
-
-  return this;
-};
-
-// emits a 'removeListener' event iff the listener was removed
-EventEmitter.prototype.removeListener = function(type, listener) {
-  var list, position, length, i;
-
-  if (!util.isFunction(listener))
-    throw TypeError('listener must be a function');
-
-  if (!this._events || !this._events[type])
-    return this;
-
-  list = this._events[type];
-  length = list.length;
-  position = -1;
-
-  if (list === listener ||
-      (util.isFunction(list.listener) && list.listener === listener)) {
-    delete this._events[type];
-    if (this._events.removeListener)
-      this.emit('removeListener', type, listener);
-
-  } else if (util.isObject(list)) {
-    for (i = length; i-- > 0;) {
-      if (list[i] === listener ||
-          (list[i].listener && list[i].listener === listener)) {
-        position = i;
-        break;
-      }
-    }
-
-    if (position < 0)
-      return this;
-
-    if (list.length === 1) {
-      list.length = 0;
-      delete this._events[type];
-    } else {
-      list.splice(position, 1);
-    }
-
-    if (this._events.removeListener)
-      this.emit('removeListener', type, listener);
-  }
-
-  return this;
-};
-
-EventEmitter.prototype.removeAllListeners = function(type) {
-  var key, listeners;
-
-  if (!this._events)
-    return this;
-
-  // not listening for removeListener, no need to emit
-  if (!this._events.removeListener) {
-    if (arguments.length === 0)
-      this._events = {};
-    else if (this._events[type])
-      delete this._events[type];
-    return this;
-  }
-
-  // emit removeListener for all listeners on all events
-  if (arguments.length === 0) {
-    for (key in this._events) {
-      if (key === 'removeListener') continue;
-      this.removeAllListeners(key);
-    }
-    this.removeAllListeners('removeListener');
-    this._events = {};
-    return this;
-  }
-
-  listeners = this._events[type];
-
-  if (util.isFunction(listeners)) {
-    this.removeListener(type, listeners);
-  } else {
-    // LIFO order
-    while (listeners.length)
-      this.removeListener(type, listeners[listeners.length - 1]);
-  }
-  delete this._events[type];
-
-  return this;
-};
-
-EventEmitter.prototype.listeners = function(type) {
-  var ret;
-  if (!this._events || !this._events[type])
-    ret = [];
-  else if (util.isFunction(this._events[type]))
-    ret = [this._events[type]];
-  else
-    ret = this._events[type].slice();
-  return ret;
-};
-
-EventEmitter.listenerCount = function(emitter, type) {
-  var ret;
-  if (!emitter._events || !emitter._events[type])
-    ret = 0;
-  else if (util.isFunction(emitter._events[type]))
-    ret = 1;
-  else
-    ret = emitter._events[type].length;
-  return ret;
-};
-},{"util":10}],10:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -7782,5 +7490,5 @@ function hasOwnProperty(obj, prop) {
   return Object.prototype.hasOwnProperty.call(obj, prop);
 }
 
-},{"_shims":8}]},{},[1])
+},{"_shims":10}]},{},[1])
 ;

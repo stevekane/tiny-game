@@ -1,15 +1,10 @@
 var Game = require('./engine/game/game.js');
-var Bus = require('./engine/bus/bus.js');
+var Cache = require('./engine/cache/cache');
+var GameCache = require('./engine/cache/gameCache');
+var gameCacheManager = require('./engine/cache/gameCacheManager');
 
-var game = new Game({}, {name: "booty"});
-var subscriber = {update: "beep boop"};
-var bus = new Bus("mybus");
-bus.addSub("mySub", subscriber);
-subscriber.bus = bus;
+var cache = new Cache({type: "test", default: "wanker"});
+var gameCache = new GameCache([cache]);
 
-subscriber.bus.on("test", function () {
-  console.log(this);
-});
-
-subscriber.bus.emit("test");
-//game.start();
+console.log(gameCache);
+console.log(gameCacheManager.getCacheByType(gameCache, "test"));
