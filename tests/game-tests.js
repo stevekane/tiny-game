@@ -13,6 +13,7 @@ test("it should throw if no sceneTree is provided", function () {
     var game = new Game(null, {}); 
   }); 
 });
+
 test("it should have attributes passed in as options", function () {
   var name = "test game";
   var game = new Game({}, {name: name});
@@ -20,14 +21,21 @@ test("it should have attributes passed in as options", function () {
   assert.equal(game.name, name);
 });
 
-test("#start", function () {
-  assert.isFunction(game.start, "Start method exists");
+test("it should not be running after construction", function () {
+  var game = new Game({});
+
+  assert.isFalse(game.isRunning, "game is not running after construction");
 });
 
-test("#stop", function () {
-  assert.isFunction(game.stop, "Stop method exists");
+
+suite("Game.start");
+test("it should cause the game to be running", function () {
+  game.start();
+  assert.isTrue(game.isRunning, "start causes the game to start running");
 });
 
-test("#pause", function () {
-  assert.isFunction(game.pause, "Pause method exists");
+suite("Game.pause");
+test("it should cause the game to stop running", function () {
+  game.pause();
+  assert.isFalse(game.isRunning, "start causes the game to stop running");
 });

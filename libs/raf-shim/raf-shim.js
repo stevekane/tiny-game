@@ -5,4 +5,4 @@ module.exports =
   window.webketRequestAnimationFrame ||
   window.mozRequestAnimationFrame || 
   window.oRequestAnimationFrame ||
-  process.nextTick;
+  global.setImmediate;

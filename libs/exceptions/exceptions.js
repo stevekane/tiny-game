@@ -1,3 +1,5 @@
+var _ = require('lodash');
+
 exports.throwIf = function (message, condition) {
   if (!!condition) {
     throw new Error(message); 
