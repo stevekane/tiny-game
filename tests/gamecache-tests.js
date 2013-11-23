@@ -14,14 +14,19 @@ it("should exist and should create an instance", function () {
 });
 
 it("should assign provided caches to itself by type", function () {
-  var cache = new Cache({default: "pinky", type: "blast"});
+  var cache = new Cache({default: "pinky", type: "test"});
   var gameCache = new GameCache([cache]);  
+  var retrievedCache = gameCacheManager.getCacheByType(gameCache, "test");
+  assert.isDefined(retrievedCache);
 });
 
 suite("gameCacheManager.addCache");
 test("it should add an additional cache to the gameCacheManager instance", function () {
   var gameCache = new GameCache();
   var testCache = new Cache({type: "test"});
+  var retrievedCache;
+
   gameCacheManager.addCache(gameCache, testCache);
-  assert.isDefined(gameCacheManager.getCacheByType(gameCache, "test"), "tests type is defined");
+  retrievedCache = gameCacheManager.getCacheByType(gameCache, "test");
+  assert.isDefined(retrievedCache, "test type is defined");
 });
