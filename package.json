@@ -25,6 +25,9 @@
   },
   "dependencies": {
     "connect": "~2.11.0",
-    "lodash": "~2.3.0"
+    "lodash": "~2.3.0",
+    "async": "~0.2.9",
+    "q": "~0.9.7",
+    "jquery-browserify": "~1.8.1"
   }
 }
