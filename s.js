@@ -8569,6 +8569,12 @@ var InputHandler = function (keydrown) {
   this.tick = keydrown.tick;
 };
 
+var KeyBinding = function (keyName, upOrDown, handler) {
+  this.keyName = keyName;
+  this.upOrDown = upOrDown;
+  this.handler = handler;
+}
+
 var Game = function (board, inputHandler, cache) {
   this.board = board;
   this.inputHandler = inputHandler;
@@ -8740,6 +8746,18 @@ var createGame = _.curry(function (board, inputHandler, cache) {
   return new Game(board, inputHandler, cache);
 });
 
+var registerKeyBindings = _.curry(function (keyBindings, game) {
+  var bindings = game.inputHandler.bindings;
+
+  _.forEach(keyBindings, function (binding) {
+    bindings[binding.keyName][binding.upOrDown](function () {
+      return binding.handler(game);
+    });
+  });
+
+  return game;
+});
+
 var startGame = function (game) {
   startClock(game.clock);
   window.requestAnimationFrame(loop(game));
@@ -8753,21 +8771,12 @@ var stopGame = function (game) {
 /**
 GAME
 */
-
 //This is ghetto.  We can fix it later.  Should not be so tightly coupled
 //to keydrown at this level of API
-var registerKeyBindings = function (game) {
-  var bindings = game.inputHandler.bindings;
-
-  bindings.SPACE.down(function () {
-    console.log(game.scene);
-  });
-  bindings.SPACE.up(function () {
-    console.log("Space has been released");
-  });
-
-  return game;
-}
+var keyBindings = [
+  new KeyBinding("SPACE", "down", function (game) { console.log(game); }),
+  new KeyBinding("SPACE", "up", function (game) { console.log("space released"); })
+];
 
 var assets = [
   new Asset("test", "/images/test.png"),
@@ -8787,7 +8796,7 @@ var gameboard = document.getElementById('game')
 fetchAssets(assets)
 .then(loadCache(cache))
 .then(createGame(board, inputHandler))
-.then(registerKeyBindings)
+.then(registerKeyBindings(keyBindings))
 .then(startGame)
 .done();
 
