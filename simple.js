@@ -3,8 +3,11 @@ var _ = require('lodash');
 var Q = require('q');
 var path = require('path');
 var keydrown = require('./vendor/keydrown.min');
-//we want to null out the global kd object
-window.kd = null;
+window.Commander = require('./libs/commander');
+window.c = new Commander();
+c.run(function () {
+  c.tick();
+});
 
 var Asset = function (name, url, value) {
   this.name = name;
@@ -25,6 +28,8 @@ var Clock = function () {
   this.isRecording = null;
 };
 
+var Camera = function () {}
+
 var Board = function (canvas) {
   this.canvas = canvas;
   this.ctx = canvas.getContext('2d');
@@ -34,20 +39,22 @@ var Board = function (canvas) {
 var InputHandler = function (keydrown) {
   this.bindings = keydrown;
   this.tick = keydrown.tick;
+  //TODO: add bindings that shove commands onto the command Queue from keyDrown
+  this.commandQueue = [];
 };
 
-var KeyBinding = function (keyName, upOrDown, handler) {
-  this.keyName = keyName;
-  this.upOrDown = upOrDown;
-  this.handler = handler;
-}
-
-var Game = function (board, inputHandler, cache) {
+var Scene = function (name, board, inputHandler, camera, keyBindings) {
+  this.name = name;
   this.board = board;
   this.inputHandler = inputHandler;
+  this.camera = camera;
+  this.keyBindings = keyBindings;
+};
+
+var Game = function (cache, clock, scenes) {
   this.cache = cache;
-  this.clock = new Clock();
-  this.scene = "test-scene";
+  this.clock = clock;
+  this.scenes = scenes || {};
 };
 
 var fetchImage = function (asset) {
@@ -174,15 +181,16 @@ var getRandomColor = function () {
   return "#" + Math.random().toString(16).slice(2, 8);
 }
 
-var handleInputs = function (inputHandler, dT) {
-  inputHandler.tick(dT);
+var processInputs = function (scene, dT) {
+  scene.inputHandler.tick(dT);
+  return scene;
 }
 
 var updateScene = function (scene, dT) {
   return scene;
 }
 
-var drawWorld = function (board, dT) {
+var drawScene = function (scene, dT) {
   var height = board.canvas.height
     , width = board.canvas.width;
   
@@ -195,6 +203,15 @@ var drawWorld = function (board, dT) {
   //draw foreground text
   board.ctx.fillStyle = getRandomColor();
   board.ctx.fillText("Time" + dT + " ms", 0, 10);
+  board.ctx.fillText("SceneName: " + scene.name, 0, 20);
+  return scene;
+}
+
+var advanceScene = function (scene, dT) {
+  processInputs(scene, dT);
+  updateScene(scene, dT);
+  drawScene(scene, dT);
+  return scene;
 }
 
 //we close over our game object... yay
@@ -202,54 +219,50 @@ var loop = function (game) {
   return function innerLoop () {
     var dT = getDeltaT(game.clock);
 
-    handleInputs(game.inputHandler, dT);
-    updateScene(game.scene, dT);
-    drawWorld(game.board, dT);
+    advanceScene(game.activeScene, dT);
     window.requestAnimationFrame(innerLoop);
   };
 }
 
-var createGame = _.curry(function (board, inputHandler, cache) {
-  return new Game(board, inputHandler, cache);
-});
-
-/*
-We bind function callbacks using keydrown's preferred syntax
-All handlers have access to the game object through closure
-TODO: This probably shouldn't be so closely tied to the semantics
-of keydrown...consider an interface
-*/
-var registerKeyBindings = _.curry(function (keyBindings, game) {
-  var bindings = game.inputHandler.bindings;
-
-  _.forEach(keyBindings, function (binding) {
-    bindings[binding.keyName][binding.upOrDown](function () {
-      return binding.handler(game);
-    });
-  });
-
-  return game;
-});
-
 var startGame = function (game) {
+  if (!game.activeScene) return game;
+
   startClock(game.clock);
   window.requestAnimationFrame(loop(game));
+  return game;
 };
 
 var stopGame = function (game) {
+  if (!game.activeScene) return game;
+
   stopClock(game.clock); 
   window.cancelAnimationFrame(loop(game));
+  return game;
+}
+
+var activateScene = function (sceneName, game) {
+  var targetScene = game.scenes[sceneName];
+
+  if (!targetScene) {
+    throw new Error("invalid scene name ", sceneName); 
+  }
+
+  game.activeScene = targetScene;
+  return game;
 }
 
 /**
 GAME
 */
-var keyBindings = [
-  new KeyBinding("SPACE", "down", function (game) { console.log(game); }),
-  new KeyBinding("SPACE", "up", function (game) { console.log("space released"); })
-];
+//setup objects to construct our game instance
+var gameboard = document.getElementById('game')
+  , clock = new Clock()
+  , cache = new Cache()
+  , camera = new Camera()
+  , board = new Board(gameboard)
+  , inputHandler = new InputHandler(keydrown);
 
-var assets = [
+var loadingAssets = [
   new Asset("test", "/images/test.png"),
   new Asset("fake", "/images/not-real.png"),
   new Asset("characters", "/json/spritesheet.json"),
@@ -258,15 +271,26 @@ var assets = [
   new Asset("unsupported", "/fake/object.ext")
 ];
 
-//setup objects to construct our game instance
-var gameboard = document.getElementById('game')
-  , cache = new Cache()
-  , board = new Board(gameboard)
-  , inputHandler = new InputHandler(keydrown);
+var loadingBindings = [];
+var titleBindings = [];
+var gameBindings = [];
 
-fetchAssets(assets)
+var scenes = {
+  loading: new Scene("loading", board, inputHandler, camera, loadingBindings),
+  title: new Scene("title", board, inputHandler, camera, titleBindings),
+  game: new Scene("game", board, inputHandler, camera, gameBindings)
+};
+
+
+fetchAssets(loadingAssets)
 .then(loadCache(cache))
-.then(createGame(board, inputHandler))
-.then(registerKeyBindings(keyBindings))
-.then(startGame)
+.then(function (cache) {
+  return new Game(cache, clock, scenes);})
+.then(function (game) {
+  activateScene("loading", game); 
+  startGame(game);
+})
+.then(null, function (err) {
+  console.log(err.stack);
+})
 .done();

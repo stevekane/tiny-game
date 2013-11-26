@@ -1,4 +1,97 @@
 ;(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
+var _ = require('lodash');
+
+//polyfil for adding event listeners
+var documentOn = function (eventName, handler) {
+  if (window.addEventListener) {
+    window.addEventListener(eventName, handler, false); 
+  } else if (document.attachEvent) {
+    document.attachEvent('on' + eventName, handler); 
+  }
+}
+
+var setupHandlers = function (commander) {
+  documentOn('keydown', function (event) {
+    var command= newCommand(commander.commandPool);
+    _.extend(command, {
+      keyCode: event.keyCode,
+      state: "down",
+      data: {timeStamp: Date.now()}
+    });
+    commander.commandQueue.push(command);
+  });   
+
+  documentOn('keyup', function (event) {
+    var command= newCommand(commander.commandPool);
+    _.extend(command, {
+      keyCode: event.keyCode,
+      state: "up",
+      data: {timeStamp: Date.now()}
+    });
+    commander.commandQueue.push(command);
+  });
+};
+
+var CommandPool = function (size, Constructor) {
+  for (var i=0; i<size; i++) {
+    this.push(new Constructor()); 
+  }
+};
+
+CommandPool.prototype = Array.prototype;
+
+var newCommand = function (commandPool) {
+  var newCommand = _.find(commandPool, "new");
+  newCommand.new = false;
+  return newCommand;
+};
+
+var resetCommand = function (command) {
+  _.extend(command, {
+    keyCode: "",
+    state: "",
+    data: {},
+    new: true 
+  });
+};
+
+var Command = function (keyCode, state, data) {
+  this.keyCode = keyCode || "";
+  this.state = state || "";
+  this.data = data || {};
+  this.new = true;
+}
+
+var Commander = function (options) {
+  var options = options || {};
+
+  this.commandPool = new CommandPool(50, Command);
+  this.commandQueue = options.target ? options.target : [];
+  setupHandlers(this);
+};
+
+Commander.prototype = Object.create({});
+
+Commander.prototype.tick = function (dT) {
+  console.log(this.commandQueue); 
+  _.forEach(this.commandQueue, function (command) {
+    resetCommand(command); 
+  });
+  this.commandQueue = [];
+}
+
+Commander.prototype.run = function (fn) {
+  var commander = this;
+
+  window.requestAnimationFrame(function () {
+    commander.run(fn);
+    fn();
+  });
+}
+
+module.exports = Commander;
+
+},{"lodash":2}],2:[function(require,module,exports){
 var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {};/**
  * @license
  * Lo-Dash 2.3.0 (Custom Build) <http://lodash.com/>
@@ -6591,7 +6684,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
   }
 }.call(this));
 
-},{}],2:[function(require,module,exports){
+},{}],3:[function(require,module,exports){
 var process=require("__browserify_process");// vim:ts=4:sts=4:sw=4:
 /*!
  *
@@ -8530,14 +8623,17 @@ return Q;
 
 });
 
-},{"__browserify_process":39}],3:[function(require,module,exports){
+},{"__browserify_process":40}],4:[function(require,module,exports){
 var http = require('http');
 var _ = require('lodash');
 var Q = require('q');
 var path = require('path');
 var keydrown = require('./vendor/keydrown.min');
-//we want to null out the global kd object
-window.kd = null;
+window.Commander = require('./libs/commander');
+window.c = new Commander();
+c.run(function () {
+  c.tick();
+});
 
 var Asset = function (name, url, value) {
   this.name = name;
@@ -8558,6 +8654,8 @@ var Clock = function () {
   this.isRecording = null;
 };
 
+var Camera = function () {}
+
 var Board = function (canvas) {
   this.canvas = canvas;
   this.ctx = canvas.getContext('2d');
@@ -8567,20 +8665,22 @@ var Board = function (canvas) {
 var InputHandler = function (keydrown) {
   this.bindings = keydrown;
   this.tick = keydrown.tick;
+  //TODO: add bindings that shove commands onto the command Queue from keyDrown
+  this.commandQueue = [];
 };
 
-var KeyBinding = function (keyName, upOrDown, handler) {
-  this.keyName = keyName;
-  this.upOrDown = upOrDown;
-  this.handler = handler;
-}
-
-var Game = function (board, inputHandler, cache) {
+var Scene = function (name, board, inputHandler, camera, keyBindings) {
+  this.name = name;
   this.board = board;
   this.inputHandler = inputHandler;
+  this.camera = camera;
+  this.keyBindings = keyBindings;
+};
+
+var Game = function (cache, clock, scenes) {
   this.cache = cache;
-  this.clock = new Clock();
-  this.scene = "test-scene";
+  this.clock = clock;
+  this.scenes = scenes || {};
 };
 
 var fetchImage = function (asset) {
@@ -8707,15 +8807,16 @@ var getRandomColor = function () {
   return "#" + Math.random().toString(16).slice(2, 8);
 }
 
-var handleInputs = function (inputHandler, dT) {
-  inputHandler.tick(dT);
+var processInputs = function (scene, dT) {
+  scene.inputHandler.tick(dT);
+  return scene;
 }
 
 var updateScene = function (scene, dT) {
   return scene;
 }
 
-var drawWorld = function (board, dT) {
+var drawScene = function (scene, dT) {
   var height = board.canvas.height
     , width = board.canvas.width;
   
@@ -8728,6 +8829,15 @@ var drawWorld = function (board, dT) {
   //draw foreground text
   board.ctx.fillStyle = getRandomColor();
   board.ctx.fillText("Time" + dT + " ms", 0, 10);
+  board.ctx.fillText("SceneName: " + scene.name, 0, 20);
+  return scene;
+}
+
+var advanceScene = function (scene, dT) {
+  processInputs(scene, dT);
+  updateScene(scene, dT);
+  drawScene(scene, dT);
+  return scene;
 }
 
 //we close over our game object... yay
@@ -8735,50 +8845,50 @@ var loop = function (game) {
   return function innerLoop () {
     var dT = getDeltaT(game.clock);
 
-    handleInputs(game.inputHandler, dT);
-    updateScene(game.scene, dT);
-    drawWorld(game.board, dT);
+    advanceScene(game.activeScene, dT);
     window.requestAnimationFrame(innerLoop);
   };
 }
 
-var createGame = _.curry(function (board, inputHandler, cache) {
-  return new Game(board, inputHandler, cache);
-});
-
-var registerKeyBindings = _.curry(function (keyBindings, game) {
-  var bindings = game.inputHandler.bindings;
-
-  _.forEach(keyBindings, function (binding) {
-    bindings[binding.keyName][binding.upOrDown](function () {
-      return binding.handler(game);
-    });
-  });
-
-  return game;
-});
-
 var startGame = function (game) {
+  if (!game.activeScene) return game;
+
   startClock(game.clock);
   window.requestAnimationFrame(loop(game));
+  return game;
 };
 
 var stopGame = function (game) {
+  if (!game.activeScene) return game;
+
   stopClock(game.clock); 
   window.cancelAnimationFrame(loop(game));
+  return game;
+}
+
+var activateScene = function (sceneName, game) {
+  var targetScene = game.scenes[sceneName];
+
+  if (!targetScene) {
+    throw new Error("invalid scene name ", sceneName); 
+  }
+
+  game.activeScene = targetScene;
+  return game;
 }
 
 /**
 GAME
 */
-//This is ghetto.  We can fix it later.  Should not be so tightly coupled
-//to keydrown at this level of API
-var keyBindings = [
-  new KeyBinding("SPACE", "down", function (game) { console.log(game); }),
-  new KeyBinding("SPACE", "up", function (game) { console.log("space released"); })
-];
+//setup objects to construct our game instance
+var gameboard = document.getElementById('game')
+  , clock = new Clock()
+  , cache = new Cache()
+  , camera = new Camera()
+  , board = new Board(gameboard)
+  , inputHandler = new InputHandler(keydrown);
 
-var assets = [
+var loadingAssets = [
   new Asset("test", "/images/test.png"),
   new Asset("fake", "/images/not-real.png"),
   new Asset("characters", "/json/spritesheet.json"),
@@ -8787,23 +8897,34 @@ var assets = [
   new Asset("unsupported", "/fake/object.ext")
 ];
 
-//setup objects to construct our game instance
-var gameboard = document.getElementById('game')
-  , cache = new Cache()
-  , board = new Board(gameboard)
-  , inputHandler = new InputHandler(keydrown);
+var loadingBindings = [];
+var titleBindings = [];
+var gameBindings = [];
 
-fetchAssets(assets)
+var scenes = {
+  loading: new Scene("loading", board, inputHandler, camera, loadingBindings),
+  title: new Scene("title", board, inputHandler, camera, titleBindings),
+  game: new Scene("game", board, inputHandler, camera, gameBindings)
+};
+
+
+fetchAssets(loadingAssets)
 .then(loadCache(cache))
-.then(createGame(board, inputHandler))
-.then(registerKeyBindings(keyBindings))
-.then(startGame)
+.then(function (cache) {
+  return new Game(cache, clock, scenes);})
+.then(function (game) {
+  activateScene("loading", game); 
+  startGame(game);
+})
+.then(null, function (err) {
+  console.log(err.stack);
+})
 .done();
 
-},{"./vendor/keydrown.min":4,"http":21,"lodash":1,"path":13,"q":2}],4:[function(require,module,exports){
+},{"./libs/commander":1,"./vendor/keydrown.min":5,"http":22,"lodash":2,"path":14,"q":3}],5:[function(require,module,exports){
 /*! Keydrown - v0.1.5 - 2013-07-20 - http://jeremyckahn.github.com/keydrown */
 (function(n){var e=function(){var e={};e.forEach=function(n,e){var t;for(t in n)n.hasOwnProperty(t)&&e(n[t],t)};var t=e.forEach;e.getTranspose=function(n){var e={};return t(n,function(n,t){e[n]=t}),e},e.indexOf=function(n,e){if(n.indexOf)return n.indexOf(e);var t,o=n.length;for(t=0;o>t;t++)if(n[t]===e)return t;return-1};var o=e.indexOf;return e.pushUnique=function(n,e){return-1===o(n,e)?(n.push(e),!0):!1},e.removeValue=function(n,e){var t=o(n,e);return-1!==t?n.splice(t,1)[0]:void 0},e.documentOn=function(e,t){n.addEventListener?n.addEventListener(e,t,!1):document.attachEvent&&document.attachEvent("on"+e,t)},e.requestAnimationFrame=function(){return n.requestAnimationFrame||n.webkitRequestAnimationFrame||n.mozRequestAnimationFrame||function(e){n.setTimeout(e,1e3/60)}}(),e.noop=function(){},e}(),t={A:65,B:66,C:67,D:68,E:69,F:70,G:71,H:72,I:73,J:74,K:75,L:76,M:77,N:78,O:79,P:80,Q:81,R:82,S:83,T:84,U:85,V:86,W:87,X:88,Y:89,Z:90,ENTER:13,ESC:27,SPACE:32,LEFT:37,UP:38,RIGHT:39,DOWN:40},o=e.getTranspose(t),r=[],u=function(){"use strict";function n(){}function t(n,e,t){t?n[e]=t:n[e]()}return n.prototype._downHandler=e.noop,n.prototype._upHandler=e.noop,n.prototype._pressHandler=e.noop,n.prototype.down=function(n){t(this,"_downHandler",n)},n.prototype.up=function(n){t(this,"_upHandler",n)},n.prototype.press=function(n){t(this,"_pressHandler",n)},n.prototype.unbindDown=function(){this._downHandler=e.noop},n.prototype.unbindUp=function(){this._upHandler=e.noop},n.prototype.unbindPress=function(){this._pressHandler=e.noop},n}(),i=function(r){"use strict";var i={};i.Key=u;var c=!1;return i.tick=function(){var n,e=r.length;for(n=0;e>n;n++){var t=r[n],u=o[t];u&&i[u].down()}},i.run=function(t){c=!0,e.requestAnimationFrame.call(n,function(){c&&(i.run(t),t())})},i.stop=function(){c=!1},e.forEach(t,function(n,e){i[e]=new u}),e.documentOn("keydown",function(n){var t=n.keyCode,u=o[t],c=e.pushUnique(r,t);c&&i[u]&&i[u].press()}),e.documentOn("keyup",function(n){var t=e.removeValue(r,n.keyCode),u=o[t];u&&i[u].up()}),e.documentOn("blur",function(){r.length=0}),i}(r);"object"==typeof module&&"object"==typeof module.exports?module.exports=i:"function"==typeof define&&define.amd&&define(function(){return i}),n.kd=i})(window);
-},{}],5:[function(require,module,exports){
+},{}],6:[function(require,module,exports){
 
 
 //
@@ -9021,7 +9142,7 @@ if (typeof Object.getOwnPropertyDescriptor === 'function') {
   exports.getOwnPropertyDescriptor = valueObject;
 }
 
-},{}],6:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -9094,7 +9215,7 @@ function onend() {
   timers.setImmediate(shims.bind(this.end, this));
 }
 
-},{"_shims":5,"_stream_readable":8,"_stream_writable":10,"timers":16,"util":17}],7:[function(require,module,exports){
+},{"_shims":6,"_stream_readable":9,"_stream_writable":11,"timers":17,"util":18}],8:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -9137,7 +9258,7 @@ PassThrough.prototype._transform = function(chunk, encoding, cb) {
   cb(null, chunk);
 };
 
-},{"_stream_transform":9,"util":17}],8:[function(require,module,exports){
+},{"_stream_transform":10,"util":18}],9:[function(require,module,exports){
 var process=require("__browserify_process");// Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -10058,7 +10179,7 @@ function endReadable(stream) {
   }
 }
 
-},{"__browserify_process":39,"_shims":5,"buffer":19,"events":12,"stream":14,"string_decoder":15,"timers":16,"util":17}],9:[function(require,module,exports){
+},{"__browserify_process":40,"_shims":6,"buffer":20,"events":13,"stream":15,"string_decoder":16,"timers":17,"util":18}],10:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -10264,7 +10385,7 @@ function done(stream, er) {
   return stream.push(null);
 }
 
-},{"_stream_duplex":6,"util":17}],10:[function(require,module,exports){
+},{"_stream_duplex":7,"util":18}],11:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -10634,7 +10755,7 @@ function endWritable(stream, state, cb) {
   state.ended = true;
 }
 
-},{"buffer":19,"stream":14,"timers":16,"util":17}],11:[function(require,module,exports){
+},{"buffer":20,"stream":15,"timers":17,"util":18}],12:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -10951,7 +11072,7 @@ assert.doesNotThrow = function(block, /*optional*/message) {
 };
 
 assert.ifError = function(err) { if (err) {throw err;}};
-},{"_shims":5,"util":17}],12:[function(require,module,exports){
+},{"_shims":6,"util":18}],13:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -11232,7 +11353,7 @@ EventEmitter.listenerCount = function(emitter, type) {
     ret = emitter._events[type].length;
   return ret;
 };
-},{"util":17}],13:[function(require,module,exports){
+},{"util":18}],14:[function(require,module,exports){
 var process=require("__browserify_process");// Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -11443,7 +11564,7 @@ exports.extname = function(path) {
   return splitPath(path)[3];
 };
 
-},{"__browserify_process":39,"_shims":5,"util":17}],14:[function(require,module,exports){
+},{"__browserify_process":40,"_shims":6,"util":18}],15:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -11572,7 +11693,7 @@ Stream.prototype.pipe = function(dest, options) {
   return dest;
 };
 
-},{"_stream_duplex":6,"_stream_passthrough":7,"_stream_readable":8,"_stream_transform":9,"_stream_writable":10,"events":12,"util":17}],15:[function(require,module,exports){
+},{"_stream_duplex":7,"_stream_passthrough":8,"_stream_readable":9,"_stream_transform":10,"_stream_writable":11,"events":13,"util":18}],16:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -11765,7 +11886,7 @@ function base64DetectIncompleteChar(buffer) {
   return incomplete;
 }
 
-},{"buffer":19}],16:[function(require,module,exports){
+},{"buffer":20}],17:[function(require,module,exports){
 try {
     // Old IE browsers that do not curry arguments
     if (!setTimeout.call) {
@@ -11884,7 +12005,7 @@ if (!exports.setImmediate) {
   };
 }
 
-},{}],17:[function(require,module,exports){
+},{}],18:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -12429,7 +12550,7 @@ function hasOwnProperty(obj, prop) {
   return Object.prototype.hasOwnProperty.call(obj, prop);
 }
 
-},{"_shims":5}],18:[function(require,module,exports){
+},{"_shims":6}],19:[function(require,module,exports){
 exports.readIEEE754 = function(buffer, offset, isBE, mLen, nBytes) {
   var e, m,
       eLen = nBytes * 8 - mLen - 1,
@@ -12515,7 +12636,7 @@ exports.writeIEEE754 = function(buffer, value, offset, isBE, mLen, nBytes) {
   buffer[offset + i - d] |= s * 128;
 };
 
-},{}],19:[function(require,module,exports){
+},{}],20:[function(require,module,exports){
 var assert;
 exports.Buffer = Buffer;
 exports.SlowBuffer = Buffer;
@@ -13641,7 +13762,7 @@ Buffer.prototype.writeDoubleBE = function(value, offset, noAssert) {
   writeDouble(this, value, offset, true, noAssert);
 };
 
-},{"./buffer_ieee754":18,"assert":11,"base64-js":20}],20:[function(require,module,exports){
+},{"./buffer_ieee754":19,"assert":12,"base64-js":21}],21:[function(require,module,exports){
 (function (exports) {
 	'use strict';
 
@@ -13727,7 +13848,7 @@ Buffer.prototype.writeDoubleBE = function(value, offset, noAssert) {
 	module.exports.fromByteArray = uint8ToBase64;
 }());
 
-},{}],21:[function(require,module,exports){
+},{}],22:[function(require,module,exports){
 var http = module.exports;
 var EventEmitter = require('events').EventEmitter;
 var Request = require('./lib/request');
@@ -13792,7 +13913,7 @@ var xhrHttp = (function () {
     }
 })();
 
-},{"./lib/request":22,"events":12}],22:[function(require,module,exports){
+},{"./lib/request":23,"events":13}],23:[function(require,module,exports){
 var Stream = require('stream');
 var Response = require('./response');
 var concatStream = require('concat-stream');
@@ -13926,7 +14047,7 @@ var indexOf = function (xs, x) {
     return -1;
 };
 
-},{"./response":23,"Base64":24,"concat-stream":25,"stream":14,"util":17}],23:[function(require,module,exports){
+},{"./response":24,"Base64":25,"concat-stream":26,"stream":15,"util":18}],24:[function(require,module,exports){
 var Stream = require('stream');
 var util = require('util');
 
@@ -14048,7 +14169,7 @@ var isArray = Array.isArray || function (xs) {
     return Object.prototype.toString.call(xs) === '[object Array]';
 };
 
-},{"stream":14,"util":17}],24:[function(require,module,exports){
+},{"stream":15,"util":18}],25:[function(require,module,exports){
 ;(function () {
 
   var
@@ -14105,7 +14226,7 @@ var isArray = Array.isArray || function (xs) {
 
 }());
 
-},{}],25:[function(require,module,exports){
+},{}],26:[function(require,module,exports){
 var stream = require('stream')
 var bops = require('bops')
 var util = require('util')
@@ -14156,7 +14277,7 @@ module.exports = function(cb) {
 
 module.exports.ConcatStream = ConcatStream
 
-},{"bops":26,"stream":14,"util":17}],26:[function(require,module,exports){
+},{"bops":27,"stream":15,"util":18}],27:[function(require,module,exports){
 var proto = {}
 module.exports = proto
 
@@ -14177,9 +14298,9 @@ function mix(from, into) {
   }
 }
 
-},{"./copy.js":29,"./create.js":30,"./from.js":31,"./is.js":32,"./join.js":33,"./read.js":35,"./subarray.js":36,"./to.js":37,"./write.js":38}],27:[function(require,module,exports){
-module.exports=require(20)
-},{}],28:[function(require,module,exports){
+},{"./copy.js":30,"./create.js":31,"./from.js":32,"./is.js":33,"./join.js":34,"./read.js":36,"./subarray.js":37,"./to.js":38,"./write.js":39}],28:[function(require,module,exports){
+module.exports=require(21)
+},{}],29:[function(require,module,exports){
 module.exports = to_utf8
 
 var out = []
@@ -14254,7 +14375,7 @@ function reduced(list) {
   return out
 }
 
-},{}],29:[function(require,module,exports){
+},{}],30:[function(require,module,exports){
 module.exports = copy
 
 var slice = [].slice
@@ -14308,12 +14429,12 @@ function slow_copy(from, to, j, i, jend) {
   }
 }
 
-},{}],30:[function(require,module,exports){
+},{}],31:[function(require,module,exports){
 module.exports = function(size) {
   return new Uint8Array(size)
 }
 
-},{}],31:[function(require,module,exports){
+},{}],32:[function(require,module,exports){
 module.exports = from
 
 var base64 = require('base64-js')
@@ -14373,13 +14494,13 @@ function from_base64(str) {
   return new Uint8Array(base64.toByteArray(str)) 
 }
 
-},{"base64-js":27}],32:[function(require,module,exports){
+},{"base64-js":28}],33:[function(require,module,exports){
 
 module.exports = function(buffer) {
   return buffer instanceof Uint8Array;
 }
 
-},{}],33:[function(require,module,exports){
+},{}],34:[function(require,module,exports){
 module.exports = join
 
 function join(targets, hint) {
@@ -14417,7 +14538,7 @@ function get_length(targets) {
   return size
 }
 
-},{}],34:[function(require,module,exports){
+},{}],35:[function(require,module,exports){
 var proto
   , map
 
@@ -14439,7 +14560,7 @@ function get(target) {
   return out
 }
 
-},{}],35:[function(require,module,exports){
+},{}],36:[function(require,module,exports){
 module.exports = {
     readUInt8:      read_uint8
   , readInt8:       read_int8
@@ -14528,14 +14649,14 @@ function read_double_be(target, at) {
   return dv.getFloat64(at + target.byteOffset, false)
 }
 
-},{"./mapped.js":34}],36:[function(require,module,exports){
+},{"./mapped.js":35}],37:[function(require,module,exports){
 module.exports = subarray
 
 function subarray(buf, from, to) {
   return buf.subarray(from || 0, to || buf.length)
 }
 
-},{}],37:[function(require,module,exports){
+},{}],38:[function(require,module,exports){
 module.exports = to
 
 var base64 = require('base64-js')
@@ -14573,7 +14694,7 @@ function to_base64(buf) {
 }
 
 
-},{"base64-js":27,"to-utf8":28}],38:[function(require,module,exports){
+},{"base64-js":28,"to-utf8":29}],39:[function(require,module,exports){
 module.exports = {
     writeUInt8:      write_uint8
   , writeInt8:       write_int8
@@ -14661,7 +14782,7 @@ function write_double_be(target, value, at) {
   return dv.setFloat64(at + target.byteOffset, value, false)
 }
 
-},{"./mapped.js":34}],39:[function(require,module,exports){
+},{"./mapped.js":35}],40:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};
@@ -14715,5 +14836,5 @@ process.chdir = function (dir) {
     throw new Error('process.chdir is not supported');
 };
 
-},{}]},{},[3])
+},{}]},{},[4])
 ;
