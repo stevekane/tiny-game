@@ -2,12 +2,7 @@ var http = require('http');
 var _ = require('lodash');
 var Q = require('q');
 var path = require('path');
-var keydrown = require('./vendor/keydrown.min');
-window.Commander = require('./libs/commander');
-window.c = new Commander();
-c.run(function () {
-  c.tick();
-});
+var commander = require('./libs/commander/commander');
 
 var Asset = function (name, url, value) {
   this.name = name;
@@ -36,11 +31,8 @@ var Board = function (canvas) {
 };
 
 //for now, we are using keydrown directly...kinda nub
-var InputHandler = function (keydrown) {
-  this.bindings = keydrown;
-  this.tick = keydrown.tick;
-  //TODO: add bindings that shove commands onto the command Queue from keyDrown
-  this.commandQueue = [];
+var InputHandler = function () {
+  this.tick = function () {};
 };
 
 var Scene = function (name, board, inputHandler, camera, keyBindings) {
@@ -201,7 +193,7 @@ var drawScene = function (scene, dT) {
   board.ctx.fillRect(0, 0, width, height);
 
   //draw foreground text
-  board.ctx.fillStyle = getRandomColor();
+  board.ctx.fillStyle = "#fff333";
   board.ctx.fillText("Time" + dT + " ms", 0, 10);
   board.ctx.fillText("SceneName: " + scene.name, 0, 20);
   return scene;
@@ -260,7 +252,7 @@ var gameboard = document.getElementById('game')
   , cache = new Cache()
   , camera = new Camera()
   , board = new Board(gameboard)
-  , inputHandler = new InputHandler(keydrown);
+  , inputHandler = commander.DefaultCommander();
 
 var loadingAssets = [
   new Asset("test", "/images/test.png"),
