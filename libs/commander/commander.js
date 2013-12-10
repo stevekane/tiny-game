@@ -23,7 +23,7 @@ var documentOff = function (eventName, handler) {
 //shim for RAF
 var requestAnimFrame = function () {
   return window.requestAnimationFrame ||
-    window.webketRequestAnimationFrame ||
+    window.webkitRequestAnimationFrame ||
     window.mozRequestAnimationFrame || 
     window.oRequestAnimationFrame ||
     function (callback) {
@@ -48,7 +48,7 @@ Command.prototype = Object.create({});
  * Define what should happen when you reset your Command object
  * Generally, you would probably just set any fields you captured back
  * to some appropriate default values.
- * N.B. Be sure you set "new" to true
+ * N.B. Be sure you set "isNew" to true
 */
 Command.prototype.reset = function () {
   _.extend(this, {
@@ -64,6 +64,7 @@ Command.prototype.reset = function () {
  * happens.  This may be overriden specifically or the whole Command object
  * may be overridden
  *
+ * N.B. Be sure you set "isNew" to false 
  * @param { event } event keydown DOM event
 */
 Command.prototype.captureKeyPress = function (event) {
@@ -71,6 +72,7 @@ Command.prototype.captureKeyPress = function (event) {
     keyCode: event.keyCode,
     state: "press",
     timeStamp: Date.now(),
+    isNew: false
   });
 };
 
@@ -84,6 +86,7 @@ Command.prototype.captureKeyUp = function (event) {
     keyCode: event.keyCode,
     state: "up",
     timeStamp: Date.now(),
+    isNew: false
   });
 };
 
@@ -99,6 +102,7 @@ Command.prototype.captureKeyHeld = function (event) {
     keyCode: event.keyCode,
     state: "down",
     timeStamp: Date.now(),
+    isNew: false
   });
 };
 
@@ -124,9 +128,7 @@ CommandPool.prototype = Array.prototype;
  * set new to false before returning
 */
 CommandPool.prototype.findNew = function () {
-  var newCommand = _.find(this, "isNew");
-  newCommand.isNew = false;
-  return newCommand;
+  return _.find(this, "isNew");
 };
 
 /**
@@ -251,7 +253,7 @@ var removeHandlers = function (commander) {
 
 module.exports.Commander = Commander;
 module.exports.CommandPool = CommandPool;
-module.exports.Command= Command;
+module.exports.Command = Command;
 module.exports.DefaultCommander = function () {
   var commandPool = new CommandPool(30, Command);
   return new Commander(commandPool);

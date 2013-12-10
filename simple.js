@@ -3,6 +3,7 @@ var _ = require('lodash');
 var Q = require('q');
 var path = require('path');
 var commander = require('./libs/commander/commander');
+var requestAnimationFrame = require('./libs/raf-shim/raf-shim')(window).requestAnimationFrame;
 
 var Asset = function (name, url, value) {
   this.name = name;
@@ -23,7 +24,7 @@ var Clock = function () {
   this.isRecording = null;
 };
 
-var Camera = function () {}
+var Camera = function () {};
 
 var Board = function (canvas) {
   this.canvas = canvas;
@@ -99,13 +100,13 @@ var fetchJSON = function (asset) {
   });
 
   return JSONPromise.promise;
-}
+};
 
 var fetchBadAsset = function (asset) {
   var failedPromise = Q.defer();
   failedPromise.reject(new Error("Invalid extension type"));
   return failedPromise.promise;
-}
+};
 
 var fetchAsset = function (asset) {
   var fetchPromise;
@@ -212,7 +213,7 @@ var loop = function (game) {
     var dT = getDeltaT(game.clock);
 
     advanceScene(game.activeScene, dT);
-    window.requestAnimationFrame(innerLoop);
+    requestAnimationFrame(innerLoop);
   };
 }
 
@@ -220,7 +221,7 @@ var startGame = function (game) {
   if (!game.activeScene) return game;
 
   startClock(game.clock);
-  window.requestAnimationFrame(loop(game));
+  requestAnimationFrame(loop(game));
   return game;
 };
 
