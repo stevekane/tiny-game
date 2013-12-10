@@ -3,7 +3,7 @@ var _ = require('lodash');
 var Q = require('q');
 var path = require('path');
 var commander = require('./libs/commander/commander');
-var requestAnimationFrame = require('./libs/raf-shim/raf-shim')(window).requestAnimationFrame;
+var requestAnimationFrame = require('raf-shim')(window).requestAnimationFrame;
 
 var Asset = function (name, url, value) {
   this.name = name;
