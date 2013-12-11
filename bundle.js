@@ -260,7 +260,151 @@ module.exports.DefaultCommander = function () {
   return new Commander(commandPool);
 }
 
-},{"lodash":37}],2:[function(require,module,exports){
+},{"lodash":40}],2:[function(require,module,exports){
+var q = require('q')
+  , fetchJSON = require('./fetch/json')
+  , fetchImage = require('./fetch/image')
+var fetchAudio = function () {};
+
+var Loader = function () {
+  this._handlers = {
+    json: fetchJSON,
+    image: fetchImage,
+    audio: fetchAudio
+  };
+};
+
+Loader.Asset = function (url, typeName, name) {
+  this.url = url;
+  this.type = typeName;
+  this.name = name;
+};
+
+Loader.prototype.addType = function (typeName, fetchFn) {
+  this._handlers[typeName] = fetchFn; 
+  return this;
+};
+
+Loader.prototype.removeType = function (typeName) {
+  delete this._handlers[typeName];
+  return this;
+};
+
+Loader.prototype.getType = function (typeName) {
+  return this._handlers[typeName];
+};
+
+//fetchFunctions must return a promise!
+Loader.prototype.fetch = function (asset) {
+  var fetchFn = this.getType(asset.type);
+  if (!fetchFn) {
+    throw new Error(
+      "No fetch function found for type"
+      + asset.type
+      + asset.name
+    ); 
+  }
+  return fetchFn(asset);
+};
+
+/**
+Returns an array of results objects:  {
+  succeeded: true/false,
+  result: LoadedAsset
+}
+*/
+Loader.prototype.fetchMany = function (assets) {
+  var fetchPromises = []
+    , i
+    , fetchFn;
+
+  for (i=0; i<assets.length; i++) {
+    fetchFn = this.getType(assets[i].type);
+    if (!fetchFn) {
+      throw new Error(
+        "No fetch function found for type "
+        + assets[i].type
+        + assets[i].name
+      );
+    }
+    fetchPromises.push(fetchFn(assets[i]));
+  }
+
+  return q.allSettled(fetchPromises).then(function (results) {
+    var transformed = [];
+
+    for (var i=0; i<results.length; i++) {
+      transformed.push({
+        succeeded: results[i].state === "fulfilled",
+        asset: results[i].value
+      });
+    }
+    return transformed;
+  });
+};
+
+module.exports = Loader;
+
+},{"./fetch/image":3,"./fetch/json":4,"q":41}],3:[function(require,module,exports){
+var q = require('q');
+
+module.exports = function (asset) {
+  var imagePromise = q.defer()
+    , image = new Image();
+
+  image.onload = function (params) {
+    return imagePromise.resolve(asset);
+  };
+  image.onerror = function (err) {
+    return imagePromise.reject(err);
+  };
+  image.src = asset.url;
+  asset.value = image;
+
+  return imagePromise.promise;
+};
+
+},{"q":41}],4:[function(require,module,exports){
+var http = require('http')
+  , q = require('q');
+
+module.exports = function (asset) {
+  var def = q.defer();
+
+  http.get({path: asset.url}, function (res) {
+    var body = ""
+      , json;
+
+    res.on("data", function (chunk) {
+      body += chunk; 
+    });
+    res.on("end", function () {
+      var parseSuccessful = true;
+
+      try {
+        json = JSON.parse(body);  
+      } catch (e) {
+        parseSuccessful = false;
+      }
+
+      if (parseSuccessful) {
+        asset.value = json; 
+        def.resolve(asset);
+      } else {
+        asset.value = null; 
+        def.reject(asset);
+      }
+    });
+  })  
+  .on("error", function (err) {
+    console.log(err);
+    return def.reject(asset);
+  });
+
+  return def.promise;
+};
+
+},{"http":21,"q":41}],5:[function(require,module,exports){
 
 
 //
@@ -478,7 +622,7 @@ if (typeof Object.getOwnPropertyDescriptor === 'function') {
   exports.getOwnPropertyDescriptor = valueObject;
 }
 
-},{}],3:[function(require,module,exports){
+},{}],6:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -551,7 +695,7 @@ function onend() {
   timers.setImmediate(shims.bind(this.end, this));
 }
 
-},{"_shims":2,"_stream_readable":5,"_stream_writable":7,"timers":13,"util":14}],4:[function(require,module,exports){
+},{"_shims":5,"_stream_readable":8,"_stream_writable":10,"timers":16,"util":17}],7:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -594,7 +738,7 @@ PassThrough.prototype._transform = function(chunk, encoding, cb) {
   cb(null, chunk);
 };
 
-},{"_stream_transform":6,"util":14}],5:[function(require,module,exports){
+},{"_stream_transform":9,"util":17}],8:[function(require,module,exports){
 var process=require("__browserify_process");// Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -1515,7 +1659,7 @@ function endReadable(stream) {
   }
 }
 
-},{"__browserify_process":36,"_shims":2,"buffer":16,"events":9,"stream":11,"string_decoder":12,"timers":13,"util":14}],6:[function(require,module,exports){
+},{"__browserify_process":39,"_shims":5,"buffer":19,"events":12,"stream":14,"string_decoder":15,"timers":16,"util":17}],9:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -1721,7 +1865,7 @@ function done(stream, er) {
   return stream.push(null);
 }
 
-},{"_stream_duplex":3,"util":14}],7:[function(require,module,exports){
+},{"_stream_duplex":6,"util":17}],10:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -2091,7 +2235,7 @@ function endWritable(stream, state, cb) {
   state.ended = true;
 }
 
-},{"buffer":16,"stream":11,"timers":13,"util":14}],8:[function(require,module,exports){
+},{"buffer":19,"stream":14,"timers":16,"util":17}],11:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -2408,7 +2552,7 @@ assert.doesNotThrow = function(block, /*optional*/message) {
 };
 
 assert.ifError = function(err) { if (err) {throw err;}};
-},{"_shims":2,"util":14}],9:[function(require,module,exports){
+},{"_shims":5,"util":17}],12:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -2689,7 +2833,7 @@ EventEmitter.listenerCount = function(emitter, type) {
     ret = emitter._events[type].length;
   return ret;
 };
-},{"util":14}],10:[function(require,module,exports){
+},{"util":17}],13:[function(require,module,exports){
 var process=require("__browserify_process");// Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -2900,7 +3044,7 @@ exports.extname = function(path) {
   return splitPath(path)[3];
 };
 
-},{"__browserify_process":36,"_shims":2,"util":14}],11:[function(require,module,exports){
+},{"__browserify_process":39,"_shims":5,"util":17}],14:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -3029,7 +3173,7 @@ Stream.prototype.pipe = function(dest, options) {
   return dest;
 };
 
-},{"_stream_duplex":3,"_stream_passthrough":4,"_stream_readable":5,"_stream_transform":6,"_stream_writable":7,"events":9,"util":14}],12:[function(require,module,exports){
+},{"_stream_duplex":6,"_stream_passthrough":7,"_stream_readable":8,"_stream_transform":9,"_stream_writable":10,"events":12,"util":17}],15:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -3222,7 +3366,7 @@ function base64DetectIncompleteChar(buffer) {
   return incomplete;
 }
 
-},{"buffer":16}],13:[function(require,module,exports){
+},{"buffer":19}],16:[function(require,module,exports){
 try {
     // Old IE browsers that do not curry arguments
     if (!setTimeout.call) {
@@ -3341,7 +3485,7 @@ if (!exports.setImmediate) {
   };
 }
 
-},{}],14:[function(require,module,exports){
+},{}],17:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -3886,7 +4030,7 @@ function hasOwnProperty(obj, prop) {
   return Object.prototype.hasOwnProperty.call(obj, prop);
 }
 
-},{"_shims":2}],15:[function(require,module,exports){
+},{"_shims":5}],18:[function(require,module,exports){
 exports.readIEEE754 = function(buffer, offset, isBE, mLen, nBytes) {
   var e, m,
       eLen = nBytes * 8 - mLen - 1,
@@ -3972,7 +4116,7 @@ exports.writeIEEE754 = function(buffer, value, offset, isBE, mLen, nBytes) {
   buffer[offset + i - d] |= s * 128;
 };
 
-},{}],16:[function(require,module,exports){
+},{}],19:[function(require,module,exports){
 var assert;
 exports.Buffer = Buffer;
 exports.SlowBuffer = Buffer;
@@ -5098,7 +5242,7 @@ Buffer.prototype.writeDoubleBE = function(value, offset, noAssert) {
   writeDouble(this, value, offset, true, noAssert);
 };
 
-},{"./buffer_ieee754":15,"assert":8,"base64-js":17}],17:[function(require,module,exports){
+},{"./buffer_ieee754":18,"assert":11,"base64-js":20}],20:[function(require,module,exports){
 (function (exports) {
 	'use strict';
 
@@ -5184,7 +5328,7 @@ Buffer.prototype.writeDoubleBE = function(value, offset, noAssert) {
 	module.exports.fromByteArray = uint8ToBase64;
 }());
 
-},{}],18:[function(require,module,exports){
+},{}],21:[function(require,module,exports){
 var http = module.exports;
 var EventEmitter = require('events').EventEmitter;
 var Request = require('./lib/request');
@@ -5249,7 +5393,7 @@ var xhrHttp = (function () {
     }
 })();
 
-},{"./lib/request":19,"events":9}],19:[function(require,module,exports){
+},{"./lib/request":22,"events":12}],22:[function(require,module,exports){
 var Stream = require('stream');
 var Response = require('./response');
 var concatStream = require('concat-stream');
@@ -5383,7 +5527,7 @@ var indexOf = function (xs, x) {
     return -1;
 };
 
-},{"./response":20,"Base64":21,"concat-stream":22,"stream":11,"util":14}],20:[function(require,module,exports){
+},{"./response":23,"Base64":24,"concat-stream":25,"stream":14,"util":17}],23:[function(require,module,exports){
 var Stream = require('stream');
 var util = require('util');
 
@@ -5505,7 +5649,7 @@ var isArray = Array.isArray || function (xs) {
     return Object.prototype.toString.call(xs) === '[object Array]';
 };
 
-},{"stream":11,"util":14}],21:[function(require,module,exports){
+},{"stream":14,"util":17}],24:[function(require,module,exports){
 ;(function () {
 
   var
@@ -5562,7 +5706,7 @@ var isArray = Array.isArray || function (xs) {
 
 }());
 
-},{}],22:[function(require,module,exports){
+},{}],25:[function(require,module,exports){
 var stream = require('stream')
 var bops = require('bops')
 var util = require('util')
@@ -5613,7 +5757,7 @@ module.exports = function(cb) {
 
 module.exports.ConcatStream = ConcatStream
 
-},{"bops":23,"stream":11,"util":14}],23:[function(require,module,exports){
+},{"bops":26,"stream":14,"util":17}],26:[function(require,module,exports){
 var proto = {}
 module.exports = proto
 
@@ -5634,9 +5778,9 @@ function mix(from, into) {
   }
 }
 
-},{"./copy.js":26,"./create.js":27,"./from.js":28,"./is.js":29,"./join.js":30,"./read.js":32,"./subarray.js":33,"./to.js":34,"./write.js":35}],24:[function(require,module,exports){
-module.exports=require(17)
-},{}],25:[function(require,module,exports){
+},{"./copy.js":29,"./create.js":30,"./from.js":31,"./is.js":32,"./join.js":33,"./read.js":35,"./subarray.js":36,"./to.js":37,"./write.js":38}],27:[function(require,module,exports){
+module.exports=require(20)
+},{}],28:[function(require,module,exports){
 module.exports = to_utf8
 
 var out = []
@@ -5711,7 +5855,7 @@ function reduced(list) {
   return out
 }
 
-},{}],26:[function(require,module,exports){
+},{}],29:[function(require,module,exports){
 module.exports = copy
 
 var slice = [].slice
@@ -5765,12 +5909,12 @@ function slow_copy(from, to, j, i, jend) {
   }
 }
 
-},{}],27:[function(require,module,exports){
+},{}],30:[function(require,module,exports){
 module.exports = function(size) {
   return new Uint8Array(size)
 }
 
-},{}],28:[function(require,module,exports){
+},{}],31:[function(require,module,exports){
 module.exports = from
 
 var base64 = require('base64-js')
@@ -5830,13 +5974,13 @@ function from_base64(str) {
   return new Uint8Array(base64.toByteArray(str)) 
 }
 
-},{"base64-js":24}],29:[function(require,module,exports){
+},{"base64-js":27}],32:[function(require,module,exports){
 
 module.exports = function(buffer) {
   return buffer instanceof Uint8Array;
 }
 
-},{}],30:[function(require,module,exports){
+},{}],33:[function(require,module,exports){
 module.exports = join
 
 function join(targets, hint) {
@@ -5874,7 +6018,7 @@ function get_length(targets) {
   return size
 }
 
-},{}],31:[function(require,module,exports){
+},{}],34:[function(require,module,exports){
 var proto
   , map
 
@@ -5896,7 +6040,7 @@ function get(target) {
   return out
 }
 
-},{}],32:[function(require,module,exports){
+},{}],35:[function(require,module,exports){
 module.exports = {
     readUInt8:      read_uint8
   , readInt8:       read_int8
@@ -5985,14 +6129,14 @@ function read_double_be(target, at) {
   return dv.getFloat64(at + target.byteOffset, false)
 }
 
-},{"./mapped.js":31}],33:[function(require,module,exports){
+},{"./mapped.js":34}],36:[function(require,module,exports){
 module.exports = subarray
 
 function subarray(buf, from, to) {
   return buf.subarray(from || 0, to || buf.length)
 }
 
-},{}],34:[function(require,module,exports){
+},{}],37:[function(require,module,exports){
 module.exports = to
 
 var base64 = require('base64-js')
@@ -6030,7 +6174,7 @@ function to_base64(buf) {
 }
 
 
-},{"base64-js":24,"to-utf8":25}],35:[function(require,module,exports){
+},{"base64-js":27,"to-utf8":28}],38:[function(require,module,exports){
 module.exports = {
     writeUInt8:      write_uint8
   , writeInt8:       write_int8
@@ -6118,7 +6262,7 @@ function write_double_be(target, value, at) {
   return dv.setFloat64(at + target.byteOffset, value, false)
 }
 
-},{"./mapped.js":31}],36:[function(require,module,exports){
+},{"./mapped.js":34}],39:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};
@@ -6172,7 +6316,7 @@ process.chdir = function (dir) {
     throw new Error('process.chdir is not supported');
 };
 
-},{}],37:[function(require,module,exports){
+},{}],40:[function(require,module,exports){
 var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {};/**
  * @license
  * Lo-Dash 2.3.0 (Custom Build) <http://lodash.com/>
@@ -12765,7 +12909,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
   }
 }.call(this));
 
-},{}],38:[function(require,module,exports){
+},{}],41:[function(require,module,exports){
 var process=require("__browserify_process");// vim:ts=4:sts=4:sw=4:
 /*!
  *
@@ -14704,7 +14848,7 @@ return Q;
 
 });
 
-},{"__browserify_process":36}],39:[function(require,module,exports){
+},{"__browserify_process":39}],42:[function(require,module,exports){
 module.exports = function (win) {
   var vendors = ['ms', 'moz', 'webkit', 'o']
     , raf = win.requestAnimationFrame
@@ -14727,19 +14871,18 @@ module.exports = function (win) {
   };
 };
 
-},{}],40:[function(require,module,exports){
-var http = require('http');
-var _ = require('lodash');
-var Q = require('q');
-var path = require('path');
-var commander = require('./libs/commander/commander');
-var requestAnimationFrame = require('raf-shim')(window).requestAnimationFrame;
+},{}],43:[function(require,module,exports){
+var http = require('http')
+  , path = require('path');
 
-var Asset = function (name, url, value) {
-  this.name = name;
-  this.url = url;
-  this.value = value;
-};
+var _ = require('lodash')
+  , Q = require('q');
+
+var requestAnimationFrame = require('raf-shim')(window).requestAnimationFrame
+  , Loader = require('asset-gopher');
+
+
+var commander = require('./libs/commander/commander');
 
 var Cache = function (hash) {
   var hash = hash || {};
@@ -14751,7 +14894,6 @@ var Clock = function () {
   this.timeStamp = null;
   this.startTime = null;
   this.stopTime = null;
-  this.isRecording = null;
 };
 
 var Camera = function () {};
@@ -14780,124 +14922,11 @@ var Game = function (cache, clock, scenes) {
   this.scenes = scenes || {};
 };
 
-var fetchImage = function (asset) {
-  var imagePromise = Q.defer()
-    , image = new Image();
-
-  image.addEventListener("load", function (params) {
-    return imagePromise.resolve(asset);
-  });
-  image.addEventListener("error", function (err) {
-    return imagePromise.reject(err);
-  });
-  image.src = asset.url;
-  asset.value = image;
-
-  return imagePromise.promise;
-}
-
-//performant fetch using streams and other node craziness
-var fetchJSON = function (asset) {
-  var JSONPromise = Q.defer();
-
-  http.get({path: asset.url}, function (res) {
-    var body = ""
-      , json;
-
-    res.on("data", function (chunk) {
-      body += chunk; 
-    });
-    res.on("end", function () {
-      var parseSuccessful = true;
-
-      try {
-        json = JSON.parse(body);  
-      } catch (e) {
-        parseSuccessful = false;
-      }
-
-      if (parseSuccessful) {
-        asset.value = json; 
-        JSONPromise.resolve(asset);
-      } else {
-        asset.value = null; 
-        JSONPromise.reject(new Error("Invalid JSON"));
-      }
-    });
-  })  
-  .on("error", function (err) {
-    return JSONPromise.reject(err);
-  });
-
-  return JSONPromise.promise;
-};
-
-var fetchBadAsset = function (asset) {
-  var failedPromise = Q.defer();
-  failedPromise.reject(new Error("Invalid extension type"));
-  return failedPromise.promise;
-};
-
-var fetchAsset = function (asset) {
-  var fetchPromise;
-
-  switch (path.extname(asset.url)) {
-    case ".png":
-    case ".jpg":
-      fetchPromise = fetchImage(asset);
-      break;
-    case ".json":
-      fetchPromise = fetchJSON(asset);
-      break;
-    default:
-      fetchPromise = fetchBadAsset(asset);
-      break;
-  }
-
-  return fetchPromise;
-};
-
-var fetchAssets = function (assets) {
-  var fetchPromises = _.map(assets, fetchAsset);
-
-  return Q.allSettled(fetchPromises)
-  .then(function (results) {
-    return _.chain(results)
-      .where({state: "fulfilled"})
-      .pluck("value")
-      .indexBy("name")
-      .value();
-  });
-};
-
 var loadCache = _.curry(function (cache, assets) {
   _.extend(cache, assets);
   return cache;
 });
 
-var startClock = function (clock) {
-  var timeStamp = Date.now();
-
-  clock.startTime = timeStamp;
-  clock.timeStamp = timeStamp;
-  clock.isRecording = true;
-  return timeStamp;
-}
-
-var stopClock = function (clock) {
-  clock.timeStamp = null;
-  clock.stopTime = Date.now();
-  clock.isRecording = false;
-  return clock.stopTime;
-};
-
-var getDeltaT = function (clock) {
-  var timeStamp = Date.now()
-    , dT = timeStamp - clock.timeStamp;
-
-  clock.timeStamp = timeStamp;
-  return clock.isRecording ? dT : 0;
-}
 
 //Psuedo deterministic...uses rand and has no inputs
 var getRandomColor = function () {
@@ -14940,7 +14969,10 @@ var advanceScene = function (scene, dT) {
 //we close over our game object... yay
 var loop = function (game) {
   return function innerLoop () {
-    var dT = getDeltaT(game.clock);
+    var now = Date.now();
+
+    var dT = now - clock.timeStamp;
+    clock.timeStamp = now;
 
     advanceScene(game.activeScene, dT);
     requestAnimationFrame(innerLoop);
@@ -14948,18 +14980,23 @@ var loop = function (game) {
 }
 
 var startGame = function (game) {
+  var now = Date.now();
+
   if (!game.activeScene) return game;
 
-  startClock(game.clock);
+  game.clock.startTime = now;
+  game.clock.timeStamp = now;
   requestAnimationFrame(loop(game));
   return game;
 };
 
 var stopGame = function (game) {
+  var now = Date.now();
+
   if (!game.activeScene) return game;
 
-  stopClock(game.clock); 
-  window.cancelAnimationFrame(loop(game));
+  game.clock.stopTime = now;
+  cancelAnimationFrame(loop(game));
   return game;
 }
 
@@ -14974,6 +15011,15 @@ var activateScene = function (sceneName, game) {
   return game;
 }
 
+var indexLoadedAssets = function (fetchedAssets) {
+  return _.chain(fetchedAssets)
+    .where("succeeded")
+    .pluck("asset")
+    .indexBy("name")
+    .value();
+};
+
+
 /**
 GAME
 */
@@ -14983,15 +15029,14 @@ var gameboard = document.getElementById('game')
   , cache = new Cache()
   , camera = new Camera()
   , board = new Board(gameboard)
+  , loader = new Loader()
   , inputHandler = commander.DefaultCommander();
 
 var loadingAssets = [
-  new Asset("test", "/images/test.png"),
-  new Asset("fake", "/images/not-real.png"),
-  new Asset("characters", "/json/spritesheet.json"),
-  new Asset("missingjson", "/json/missing.json"),
-  new Asset("badjson", "/json/bad.json"),
-  new Asset("unsupported", "/fake/object.ext")
+  new Loader.Asset("/images/test.png", "image", "testImage"),
+  new Loader.Asset("/images/not-real.png", "image", "notFound"),
+  new Loader.Asset("/json/spritesheet.json", "json", "spritesheet"),
+  new Loader.Asset("/json/missing.json", "json", "missingJson")
 ];
 
 var loadingBindings = [];
@@ -15005,7 +15050,8 @@ var scenes = {
 };
 
 
-fetchAssets(loadingAssets)
+loader.fetchMany(loadingAssets)
+.then(indexLoadedAssets)
 .then(loadCache(cache))
 .then(function (cache) {
   return new Game(cache, clock, scenes);})
@@ -15018,5 +15064,5 @@ fetchAssets(loadingAssets)
 })
 .done();
 
-},{"./libs/commander/commander":1,"http":18,"lodash":37,"path":10,"q":38,"raf-shim":39}]},{},[40])
+},{"./libs/commander/commander":1,"asset-gopher":2,"http":21,"lodash":40,"path":13,"q":41,"raf-shim":42}]},{},[43])
 ;

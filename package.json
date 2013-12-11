@@ -30,6 +30,7 @@
     "grunt": "~0.4.2",
     "grunt-browserify": "~1.2.11",
     "grunt-contrib-watch": "~0.5.3",
-    "raf-shim": "0.0.1"
+    "raf-shim": "0.0.1",
+    "asset-gopher": "0.0.3"
   }
 }
